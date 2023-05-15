@@ -1,6 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
-
+from scipy.integrate import odeint
 
 
 class mpc_custom:
@@ -90,38 +90,58 @@ class mpc_custom:
 
         return Hdb,Fdbt,Cdb,Adc
     
-    def f_yt(x,y):
-        return x+y
 
-    def open_loop_new_states(self, at, yt):
+    def open_loop_new_states(self, at, yt, U1,  V, Ts):
+        # A = np.zeros((2,2))
+        # A[1][0] = V
+        # B = np.zeros((2, 1))
+        # B[0][0] = 1
+
+        # k1 = (A.dot(states) + B.dot(U1)).dot(Ts)
+        # k2 = (A.dot(states + k1.dot(0.5)) + B.dot(U1)).dot(Ts)
+        # k3 = (A.dot(states + k2.dot(0.5)) + B.dot(U1)).dot(Ts)
+        # k4 = (A.dot(states + k3) + B.dot(U1)).dot(Ts)
+        
+        # new_states = states + (k1 + k2.dot(2.0) + k3.dot(2.0) + k4).dot(1/6.0) 
+        
+        a = at
         x = yt
         # Runge-Kutta method
-        x_or=x
+        x_or = x
+        a_or = a
         Ts_pos=2
         for j in range(0,4):
-            x_dot=pos_vel_fixed[0]
+            a_dot = U1
+            x_dot = a*V
             # Save the slopes:
             if j == 0:
                 x_dot_k1=x_dot
+                a_dot_k1=a_dot
             elif j == 1:
                 x_dot_k2=x_dot
-
+                a_dot_k2=a_dot
             elif j == 2:
                 x_dot_k3=x_dot
+                a_dot_k3=a_dot
                 Ts_pos=1
             else:
                 x_dot_k4=x_dot
+                a_dot_k4=a_dot
             if j<3:
                 # New states using k_x
                 x=x_or+x_dot*Ts/Ts_pos
+                a=a_or+a_dot*Ts/Ts_pos
             else:
                 # New states using average k_x
                 x=x_or+1/6*(x_dot_k1+2*x_dot_k2+2*x_dot_k3+x_dot_k4)*Ts
+                a=a_or+1/6*(a_dot_k1+2*a_dot_k2+2*a_dot_k3+a_dot_k4)*Ts
         # End of Runge-Kutta method
 
-        # Take the last states
-        new_states[6]=x
-        return new_states
+        # # Take the last states
+        # new_states[6]=x
+
+
+        return a, x
 
 V = 0.5
 Ts = 0.1
@@ -141,6 +161,69 @@ plotl=len(t) # Number of outer control loop iterations
 
 controlled_states = 1
 
+def model_vehicle(z,t,u):
+    a = z[0]
+    y = z[1]
+    dadt = u
+    dydt = V*a
+    dzdt = [dadt,dydt]
+    return dzdt
+
+def newStates(z0, U1, Ts):
+    # span for next time step
+    tspan = [0.0, Ts]
+    # solve for next step
+    z = odeint(model_vehicle,z0,tspan,args=(U1,))
+    # next initial condition
+    return z[1][0], z[1][1], z[1]
+
+z0 = [0,0]
+# print(newStates(z0, U1, Ts))
+
+# # function that returns dz/dt
+# def model(z,t,u):
+#     x = z[0]
+#     y = z[1]
+#     dxdt = (-x + u)/2.0
+#     dydt = (-y + x)/5.0
+#     dzdt = [dxdt,dydt]
+#     return dzdt
+
+# # initial condition
+# z0 = [0,0]
+
+# # number of time points
+# n = 41
+
+# # time points
+# t = np.linspace(0,4,n)
+
+# # step input
+# u = np.zeros(n)
+# # change to 2.0 at time = 5.0
+# u[50:] = 2.0
+
+# # store solution
+# x = np.empty_like(t)
+# y = np.empty_like(t)
+# # record initial conditions
+# x[0] = z0[0]
+# y[0] = z0[1]
+
+# # solve ODE
+# for i in range(1,n):
+#     # span for next time step
+#     tspan = [t[i-1],t[i]]
+#     print(tspan)
+#     # solve for next step
+#     z = odeint(model_vehicle,z0,tspan,args=(u[i],))
+#     # store solution for plotting
+#     x[i] = z[1][0]
+#     y[i] = z[1][1]
+#     # next initial condition
+#     z0 = z[1]
+
+
 Xt_ref=np.transpose([xt_ref*np.ones(4+1)])
 # Create a reference vector
 refSignals=np.zeros(len(Xt_ref)*controlled_states)
@@ -151,7 +234,7 @@ for i in range(0,len(refSignals),controlled_states):
 # Initiate the controller - simulation loops
 k=0 # for reading reference signals
 hz = 4
-for j in range(0,7):
+for j in range(0,100):
     k=0
     hz = 4
    
@@ -175,20 +258,27 @@ for j in range(0,7):
         ft=np.matmul(np.concatenate((np.transpose(x_aug_t)[0][0:len(x_aug_t)],r),axis=0), Fdbt)
 
         du=-np.matmul(np.linalg.inv(Hdb),np.transpose([ft]))
-        
+         
         # Update the real inputs
         U1=U1+du[0][0]
 
         # update states
 
         # states = Ad.dot(states) + Bd * U1
-        at =  at + U1*Ts
-        yt =  yt + at*V*Ts + U1*0.5*Ts*Ts
+        # at =  at + U1*Ts
+        # yt =  yt + at*V*Ts + U1*0.5*Ts*Ts
+        # states = np.zeros((2, 1))
+        # states[0][0] = at
+        # states[1][0] = yt
+        # states = mpc.open_loop_new_states(states, U1, V, Ts)
+        # at = states[0][0]
+        # yt = states[1][0]
+        at, yt, z0 = newStates(z0, U1, Ts)
         # x_dot_t =  states[1]
         # thetat =  states[2]
         # theta_dot_t =  states[3]
 
-        print(U1)
+        print(yt)
 
 
 # for i_global in range(0,plotl-1):
