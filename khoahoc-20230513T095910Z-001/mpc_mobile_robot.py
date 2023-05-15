@@ -185,7 +185,7 @@ Vx = 4.5
 thetak = 0.0
 
 # Load the trajectory
-t=np.arange(0, 15+dt, dt)
+t=np.arange(0, 10+dt, dt)
 
 x_ref, y_ref, psi_ref = mpc.trajectory_generator(t);    
 
@@ -202,8 +202,8 @@ for i in range(0, len(refSignals), ny):
 
 # % initial state
 x0 = np.zeros((nx, 1))
-x0[0][0] = x_ref[0]
-x0[1][0] = y_ref[0]
+x0[0][0] = x_ref[0] + 15
+x0[1][0] = y_ref[0] + 15
 x0[2][0] = psi_ref[0]
 # x0 = [x_ref(1, 1); y_ref(1, 1); psi_ref(1, 1)]; % Initial state of mobile robot
 
